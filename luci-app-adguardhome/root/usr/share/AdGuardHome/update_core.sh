@@ -40,6 +40,9 @@ Check_Downloader(){
 	which curl > /dev/null 2>&1 && PKG="curl" && return
 	echo -e "\n未安装 curl"
 	which wget-ssl > /dev/null 2>&1 && PKG="wget-ssl" && return
+	echo -e "尝试通过 apk 安装 curl ..."
+	apk update > /dev/null 2>&1 && apk add curl > /dev/null 2>&1
+	which curl > /dev/null 2>&1 && PKG="curl" && return
 	echo "未安装 curl 和 wget, 无法检测更新!" && EXIT 1
 }
 
@@ -76,8 +79,8 @@ Check_Updates(){
 }
 
 UPX_Compress(){
-	Arch_upx=$(GET_Arch )
-         # https://github.com/upx/upx/releases/download/v5.0.0/upx-5.0.0-amd64_linux.tar.xz
+	Arch_upx=$(GET_Arch)
+	# https://github.com/upx/upx/releases/download/v5.0.0/upx-5.0.0-amd64_linux.tar.xz
 	upx_latest_ver="$(${_Downloader} https://api.github.com/repos/upx/upx/releases/latest 2>/dev/null | grep -E 'tag_name' | grep -E  '[0-9.]+' -o 2>/dev/null)"
 	upx_name="upx-${upx_latest_ver}-${Arch_upx}_linux.tar.xz"
 	echo -e "开始下载 ${upx_name} ...\n"
@@ -88,7 +91,12 @@ UPX_Compress(){
 	else
 		echo -e "\n${upx_name} 下载成功!\n" 
 	fi
-	which xz > /dev/null 2>&1 || (opkg list | grep ^xz || opkg update > /dev/null 2>&1 && opkg install xz --force-depends) || (echo "软件包 xz 安装失败!" && EXIT 1)
+
+	if ! which xz > /dev/null 2>&1; then
+		echo -e "正在安装 xz ..."
+		apk update > /dev/null 2>&1
+		apk add xz > /dev/null 2>&1 || (echo "软件包 xz 安装失败!" && EXIT 1)
+	fi
 	mkdir -p /tmp/upx-${upx_latest_ver}-${Arch_upx}_linux
 	echo -e "正在解压 ${upx_name} ...\n" 
 	xz -d -c /tmp/upx-${upx_latest_ver}-${Arch_upx}_linux.tar.xz | tar -x -C "/tmp"
@@ -96,10 +104,10 @@ UPX_Compress(){
 }
 
 Update_Core(){
-	rm -r /tmp/AdGuardHome_Update > /dev/null 2>&1
+	rm -rf /tmp/AdGuardHome_Update > /dev/null 2>&1
 	mkdir -p "/tmp/AdGuardHome_Update"
 	
-	Arch=$(GET_Arch )
+	Arch=$(GET_Arch)
 	eval link=$(uci get AdGuardHome.AdGuardHome.update_url 2>/dev/null)
 	echo -e "下载链接:${link}"
 	echo -e "文件名称:${link##*/}"
@@ -107,7 +115,7 @@ Update_Core(){
 	$Downloader /tmp/AdGuardHome_Update/${link##*/} ${link}
 	if [[ $? != 0 ]];then
 		echo -e "\nAdGuardHome 核心下载失败 ..."
-		rm -r /tmp/AdGuardHome_Update
+		rm -rf /tmp/AdGuardHome_Update
 		EXIT 1
 	fi 
 	if [[ ${link##*.} == gz ]]; then
@@ -153,56 +161,56 @@ Update_Core(){
 }
 
 GET_Arch() {
-	Archt="$(opkg info kernel | grep Architecture | awk -F "[ _]" '{print($2)}')"
+	if [ -f /etc/apk/arch ]; then
+		Archt="$(awk -F'_' '{print $1}' /etc/apk/arch)"
+	fi
+	[ -z "${Archt}" ] && Archt="$(uname -m)"
+
 	case "${Archt}" in
-	"i386")
+	"i386"|"i686")
 		Arch="386"
 		;;
-	"i686")
-		Arch="386"
-		;;
-	"x86")
+	"x86_64")
 		Arch="amd64"
 		;;
 	"mipsel")
 		Arch="mipsle"
-	;;
+		;;
 	"mips64el")
 		Arch="mips64le"
-		Arch="mipsle"
-		echo -e "mips64el use $Arch may have bug"
-	;;
+		;;
 	"mips")
 		Arch="mips"
-	;;
+		;;
 	"mips64")
 		Arch="mips64"
-		Arch="mips"
-		echo -e "mips64 use $Arch may have bug"
-	;;
-	"arm")
+		;;
+	"armv6"|"armv6l")
+		Arch="armv6"
+		;;
+	"arm"|"armv7l"|"armv7")
 		Arch="arm"
 		;;
-	"aarch64")
+	"aarch64"|"arm64")
 		Arch="arm64"
 		;;
-	"powerpc")
-		Arch="ppc"
-		echo -e "error not support $Archt"
+	"riscv64"|"rh64")
+		Arch="riscv64"
+		;;
+	"powerpc"|"ppc")
+		echo -e "error not support $Archt" >&2
 		EXIT 1
 		;;
-	"powerpc64")
-		Arch="ppc64"
-		echo -e "error not support $Archt"
+	"powerpc64"|"ppc64")
+		echo -e "error not support $Archt" >&2
 		EXIT 1
 		;;
-
 	*)
-		echo -e "error not support $Archt if you can use offical release please issue a bug"
+		echo -e "error not support $Archt if you can use offical release please issue a bug" >&2
 		EXIT 1
 		;;
 	esac
-        echo  "$Arch"
+	echo "$Arch"
 }
 
 EXIT(){
@@ -218,6 +226,6 @@ main(){
 
 trap "EXIT 1" SIGTERM SIGINT
 touch /var/run/update_core
-rm - rf /var/run/update_core_error 2>/dev/null
+rm -rf /var/run/update_core_error 2>/dev/null
 
 main
