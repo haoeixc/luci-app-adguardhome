@@ -180,40 +180,48 @@ Update_Core(){
 }
 
 GET_Arch() {
+	Archt=""
 	if [ -f /etc/apk/arch ]; then
-		Archt="$(awk -F'_' '{print $1}' /etc/apk/arch)"
+		Archt="$(sed -n '1p' /etc/apk/arch 2>/dev/null)"
 	fi
-	[ -z "${Archt}" ] && Archt="$(uname -m)"
+	if [ -z "${Archt}" ] && command -v opkg >/dev/null 2>&1; then
+		Archt="$(opkg print-architecture 2>/dev/null | awk '$1=="arch" && $2!="all" && $2!="noarch" {a=$2} END{print a}')"
+	fi
+	if [ -z "${Archt}" ] && [ -f /etc/openwrt_release ]; then
+		Archt="$(. /etc/openwrt_release 2>/dev/null; echo "$DISTRIB_ARCH")"
+	fi
+	[ -z "${Archt}" ] && Archt="$(uname -m 2>/dev/null)"
+	Archt="$(echo "${Archt}" | tr 'A-Z' 'a-z')"
 
 	case "${Archt}" in
-	"i386"|"i686")
+	"i386"|"i486"|"i586"|"i686"|i?86*)
 		Arch="386"
 		;;
-	"x86_64")
+	"x86_64"|"amd64"|x86_64*|amd64*)
 		Arch="amd64"
 		;;
-	"mipsel")
-		Arch="mipsle"
-		;;
-	"mips64el")
-		Arch="mips64le"
-		;;
-	"mips")
-		Arch="mips"
-		;;
-	"mips64")
-		Arch="mips64"
-		;;
-	"armv6"|"armv6l")
-		Arch="armv6"
-		;;
-	"arm"|"armv7l"|"armv7")
-		Arch="arm"
-		;;
-	"aarch64"|"arm64")
+	"aarch64"|"arm64"|aarch64*|arm64*)
 		Arch="arm64"
 		;;
-	"riscv64"|"rh64")
+	"armv6"|"armv6l"|armv6*)
+		Arch="armv6"
+		;;
+	"arm"|"armv5l"|"armv7l"|"armv7"|armv7*|arm_cortex*|arm*)
+		Arch="arm"
+		;;
+	"mipsel"|mipsel*|mipsle*)
+		Arch="mipsle"
+		;;
+	"mips64el"|"mips64le"|mips64el*|mips64le*)
+		Arch="mips64le"
+		;;
+	"mips64"|mips64*)
+		Arch="mips64"
+		;;
+	"mips"|mips*)
+		Arch="mips"
+		;;
+	"riscv64"|"rh64"|riscv64*)
 		Arch="riscv64"
 		;;
 	"powerpc"|"ppc")
